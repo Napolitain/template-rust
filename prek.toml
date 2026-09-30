@@ -1,0 +1,64 @@
+minimum_prek_version = "0.5.0"
+default_install_hook_types = ["pre-commit", "pre-push"]
+
+[[repos]]
+repo = "builtin"
+hooks = [
+    { id = "trailing-whitespace" },
+    { id = "end-of-file-fixer" },
+    { id = "mixed-line-ending", args = ["--fix=lf"] },
+    { id = "fix-byte-order-marker" },
+    { id = "pretty-format-json", args = ["--autofix", "--no-sort-keys", "--indent", "4"] },
+    { id = "check-toml" },
+    { id = "check-yaml" },
+    { id = "check-merge-conflict" },
+    { id = "check-added-large-files" },
+    { id = "detect-private-key" },
+]
+
+[[repos]]
+repo = "local"
+
+# pre-commit: fixers first (by priority), then checks
+
+[[repos.hooks]]
+id = "cargo-fmt"
+name = "cargo fmt"
+language = "system"
+entry = "cargo fmt --all"
+types = ["rust"]
+pass_filenames = false
+stages = ["pre-commit"]
+priority = 10
+
+[[repos.hooks]]
+id = "clippy-fix"
+name = "clippy --fix"
+language = "system"
+entry = "cargo clippy --fix --allow-dirty --allow-staged --all-targets --all-features --quiet"
+types = ["rust"]
+pass_filenames = false
+stages = ["pre-commit"]
+priority = 20
+
+[[repos.hooks]]
+id = "clippy"
+name = "clippy"
+language = "system"
+entry = "cargo clippy --all-targets --all-features --quiet -- -D warnings"
+types = ["rust"]
+pass_filenames = false
+stages = ["pre-commit", "pre-push"]
+priority = 30
+
+# pre-push
+
+[[repos.hooks]]
+id = "cargo-test"
+name = "cargo test"
+language = "system"
+entry = "cargo test --all-targets --all-features --quiet"
+types = ["rust"]
+pass_filenames = false
+stages = ["pre-push"]
+priority = 40

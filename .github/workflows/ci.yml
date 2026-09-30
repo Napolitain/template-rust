@@ -1,0 +1,33 @@
+name: CI
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    ci:
+        runs-on: ubuntu-26.04
+        steps:
+            - uses: actions/checkout@v7.0.1
+
+            # rustup installs the toolchain pinned in rust-toolchain.toml on first use.
+            - run: rustup show active-toolchain
+
+            - uses: Swatinem/rust-cache@v2.9.2
+
+            - uses: taiki-e/install-action@v2.87.22
+              with:
+                  tool: cargo-llvm-cov
+
+            - name: Hooks (pre-commit)
+              uses: j178/prek-action@v3.0.0
+
+            - name: Hooks (pre-push)
+              run: prek run --show-diff-on-failure --all-files --hook-stage pre-push
+
+            - name: Coverage
+              run: cargo llvm-cov --all-targets --all-features
