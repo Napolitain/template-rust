@@ -1,0 +1,33 @@
+name: Mutation
+
+on:
+    workflow_dispatch:
+    schedule:
+        - cron: "0 4 * * 1"
+
+env:
+    CARGO_TERM_COLOR: always
+
+jobs:
+    cargo-mutants:
+        runs-on: ubuntu-26.04
+        steps:
+            - uses: actions/checkout@v7.0.1
+
+            - run: rustup show active-toolchain
+
+            - uses: Swatinem/rust-cache@v2.9.2
+
+            - uses: taiki-e/install-action@v2.87.22
+              with:
+                  tool: cargo-mutants
+
+            - uses: j178/prek-action@v3.0.0
+              with:
+                  extra-args: --all-files --hook-stage manual cargo-mutants
+
+            - uses: actions/upload-artifact@v7.0.1
+              if: always()
+              with:
+                  name: mutants.out
+                  path: mutants.out

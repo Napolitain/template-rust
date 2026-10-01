@@ -55,10 +55,21 @@ priority = 30
 
 [[repos.hooks]]
 id = "cargo-test"
-name = "cargo test"
+name = "cargo test + coverage (min 80% lines)"
 language = "system"
-entry = "cargo test --all-targets --all-features --quiet"
+entry = "cargo llvm-cov --all-targets --all-features --quiet --ignore-filename-regex 'src/(main\\.rs|bin/)' --fail-under-lines 80"
 types = ["rust"]
 pass_filenames = false
 stages = ["pre-push"]
 priority = 40
+
+# manual: prek run --hook-stage manual cargo-mutants --all-files
+
+[[repos.hooks]]
+id = "cargo-mutants"
+name = "cargo-mutants (mutation testing)"
+language = "system"
+entry = "cargo mutants --all-features"
+types = ["rust"]
+pass_filenames = false
+stages = ["manual"]

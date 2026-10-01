@@ -1,0 +1,2 @@
+# https://mutants.rs/config.html
+exclude_globs = ["src/main.rs", "src/bin/**"]

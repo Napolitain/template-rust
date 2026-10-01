@@ -26,8 +26,6 @@ jobs:
             - name: Hooks (pre-commit)
               uses: j178/prek-action@v3.0.0
 
+            # Includes cargo llvm-cov (tests + coverage gate).
             - name: Hooks (pre-push)
               run: prek run --show-diff-on-failure --all-files --hook-stage pre-push
-
-            - name: Coverage
-              run: cargo llvm-cov --all-targets --all-features
