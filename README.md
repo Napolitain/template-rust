@@ -26,6 +26,15 @@ Opinionated defaults:
 - `-C target-cpu=native` for all builds (`.cargo/config.toml`).
 - Release profile: fat LTO, 1 codegen unit, stripped, `panic = "abort"`.
 
+## Complexity
+
+Clippy's `cognitive_complexity` restriction lint is explicitly enabled and fails
+above 15 through the existing `-D warnings` hooks and CI. The threshold lives in
+`clippy.toml`. This is Clippy's own control-flow heuristic, not the same algorithm
+as Sonar's cognitive complexity; Clippy has no separate cyclomatic-complexity lint.
+See the [lint documentation](https://rust-lang.github.io/rust-clippy/master/index.html#cognitive_complexity)
+for its limitations. Refactoring is manual.
+
 ## Coverage
 
 [cargo-llvm-cov](https://github.com/taiki-e/cargo-llvm-cov) (`cargo install --locked cargo-llvm-cov`) runs the tests on pre-push and in CI, and fails below 80% line coverage (`--fail-under-lines` in `prek.toml`).
