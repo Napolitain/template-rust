@@ -26,6 +26,25 @@ Opinionated defaults:
 - `-C target-cpu=native` for all builds (`.cargo/config.toml`).
 - Release profile: fat LTO, 1 codegen unit, stripped, `panic = "abort"`.
 
+## Optional Nix shell
+
+Installing the tools directly on NixOS (or another OS) remains supported. The
+optional shell supports x86_64/aarch64 Linux and Apple Silicon macOS. With Nix
+flakes enabled:
+
+```sh
+nix develop --command "$SHELL"       # keep your shell, aliases and prompt
+# Or: nix develop                   # use Nix's default Bash shell
+```
+
+Then run the normal development commands in this README. Each template has its own
+`flake.nix` and `flake.lock`, using `github:NixOS/nixpkgs/nixpkgs-unstable`.
+To refresh to the latest unstable packages, run `nix flake update nixpkgs`,
+then leave and re-enter the shell. Commit the updated lock file with your project.
+
+The shell supplies rustup, cargo-llvm-cov, cargo-mutants and a native linker.
+Rustup still installs the compiler and components from `rust-toolchain.toml`.
+
 ## Complexity
 
 Clippy's `cognitive_complexity` restriction lint is explicitly enabled and fails
