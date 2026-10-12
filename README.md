@@ -1,5 +1,7 @@
 # template-rust
 
+See [AGENTS.md](AGENTS.md) for the working, verification, performance and commit policies.
+
 Minimal Rust template (edition 2024), hooks via [prek](https://prek.j178.dev).
 
 ```
