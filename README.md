@@ -90,3 +90,55 @@ cargo mutants --in-diff <(git diff main)   # only mutants in your changes
 ```
 
 Results are in `mutants.out/` (`missed.txt` lists survivors). Config in `.cargo/mutants.toml`.
+
+## Profile-guided optimization
+
+Optional [rustc instrumentation PGO](https://doc.rust-lang.org/rustc/profile-guided-optimization.html)
+works with the pinned toolchain and its `llvm-tools-preview` component. Run this
+POSIX-shell recipe from the project root, with that rustup toolchain's `cargo` and
+`rustc` on `PATH` (the Nix shell supplies rustup):
+
+```sh
+(
+pgo_host=$(rustc -vV | sed -n 's/^host: //p')
+pgo_profdata="$(rustc --print sysroot)/lib/rustlib/$pgo_host/bin/llvm-profdata"
+# RUSTFLAGS overrides .cargo/config.toml: keep its native CPU flag explicitly.
+pgo_flags='-Ctarget-cpu=native'
+unset CARGO_ENCODED_RUSTFLAGS
+RUSTFLAGS="$pgo_flags" cargo build --locked --release --target "$pgo_host" --target-dir target/pgo-baseline
+rm -rf target/pgo-data
+mkdir -p target/pgo-data/raw
+RUSTFLAGS="$pgo_flags -Cprofile-generate=$PWD/target/pgo-data/raw" \
+    cargo build --locked --release --target "$pgo_host" --target-dir target/pgo-generate
+./target/pgo-generate/"$pgo_host"/release/template
+# Repeat the preceding command with representative application workloads.
+"$pgo_profdata" merge target/pgo-data/raw -o target/pgo-data/merged.profdata
+# Cargo does not track profile contents: clear only the previous PGO-use build.
+rm -rf target/pgo-use
+RUSTFLAGS="$pgo_flags -Cprofile-use=$PWD/target/pgo-data/merged.profdata -Cllvm-args=-pgo-warn-missing-function" \
+    cargo build --locked --release --target "$pgo_host" --target-dir target/pgo-use
+./target/pgo-use/"$pgo_host"/release/template
+hyperfine --warmup 3 "./target/pgo-baseline/$pgo_host/release/template" \
+    "./target/pgo-use/$pgo_host/release/template"
+)
+```
+
+`hyperfine` is optional. The explicit host target keeps PGO flags away from build
+scripts and proc macros. All builds retain the release profile's fat LTO, strip,
+codegen-unit and panic settings. If you customize Rust flags, put the same flags in
+`pgo_flags` for all three builds. These `RUSTFLAGS` commands require a project path
+without spaces. The subshell keeps these flags and environment changes local to
+the recipe; normal builds retain their settings.
+
+The greeting only smoke-tests the pipeline. Train your real executable on typical
+inputs, hot paths and concurrency; let it exit normally (an abort/crash does not
+flush profiles). Test the final binary and compare baseline versus optimized
+release performance with repeated runs of a separate representative workload.
+Keep source, toolchain, target and dependencies fixed; clear and regenerate the
+profiles after changes. Use the matching rustup `llvm-profdata`, without `-sparse`,
+and never substitute cargo-llvm-cov profiles. Missing-function warnings need review.
+
+Stable rustc's documented workflow is instrumentation-based. This template offers
+no sampling/AutoFDO or Propeller/relinking workflow: an LLVM backend alone does not
+provide stable rustc options, linker integration or a validated profile converter
+for those modes.
