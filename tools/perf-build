@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Run with the pinned rustup toolchain on PATH (nix develop supplies rustup).
+set -euo pipefail
+usage() { echo "Usage: $0 baseline|pgo [-- workload-command ...]" >&2; }
+mode=${1:-}
+case "$mode" in
+    baseline|pgo) shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) usage; exit 2 ;;
+esac
+if [[ ${1:-} == -- ]]; then shift; fi
+if [[ $mode == pgo && $# == 0 ]]; then usage; exit 2; fi
+root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
+cd -- "$root"
+host=$(rustc -vV | sed -n 's/^host: //p')
+binary=${PERF_BINARY:-template}
+# Match .cargo/config.toml by default; honor Cargo's two standard overrides.
+if [[ ${CARGO_ENCODED_RUSTFLAGS+x} ]]; then
+    flags=$CARGO_ENCODED_RUSTFLAGS
+elif [[ ${RUSTFLAGS+x} ]]; then
+    read -r -a words <<< "$RUSTFLAGS"
+    flags=$(IFS=$'\x1f'; echo "${words[*]}")
+else
+    flags=-Ctarget-cpu=native
+fi
+build() {
+    local directory=$1 extra=${2:-}
+    CARGO_ENCODED_RUSTFLAGS="${flags}${extra:+$'\x1f'$extra}" \
+        cargo build --locked --release --target "$host" --target-dir "target/$directory" --bin "$binary"
+}
+if [[ $mode == baseline ]]; then
+    build pgo-baseline
+    echo "Baseline: $root/target/pgo-baseline/$host/release/$binary"
+    exit 0
+fi
+profdata="$(rustc --print sysroot)/lib/rustlib/$host/bin/llvm-profdata"
+[[ -x $profdata ]] || { echo "Install llvm-tools-preview for the active rustup toolchain." >&2; exit 1; }
+mkdir -p target/pgo-data
+data=$(mktemp -d "$root/target/pgo-data/run.XXXXXX")
+{
+    git describe --always --dirty 2>/dev/null || true
+    rustc -vV
+    printf 'flags=%q\nworkload=' "$flags"
+    printf '%q ' "$@"
+    printf '\n'
+} > "$data/inputs.txt"
+mkdir -p "$data/raw"
+build pgo-generate "-Cprofile-generate=$data/raw"
+"$@" "$root/target/pgo-generate/$host/release/$binary"
+"$profdata" merge "$data/raw" -o "$data/merged.profdata"
+# A fresh profile path invalidates Cargo's cached profile-use compilation.
+build pgo-use "-Cprofile-use=$data/merged.profdata"$'\x1f''-Cllvm-args=-pgo-warn-missing-function'
+echo "Profiles and input record: $data"
+echo "Optimized: $root/target/pgo-use/$host/release/$binary"

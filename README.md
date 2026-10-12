@@ -93,52 +93,34 @@ Results are in `mutants.out/` (`missed.txt` lists survivors). Config in `.cargo/
 
 ## Profile-guided optimization
 
-Optional [rustc instrumentation PGO](https://doc.rust-lang.org/rustc/profile-guided-optimization.html)
-works with the pinned toolchain and its `llvm-tools-preview` component. Run this
-POSIX-shell recipe from the project root, with that rustup toolchain's `cargo` and
-`rustc` on `PATH` (the Nix shell supplies rustup):
+The pinned rustup toolchain includes `llvm-tools-preview` for
+[rustc instrumentation PGO](https://doc.rust-lang.org/rustc/profile-guided-optimization.html).
+Use its `cargo` and `rustc` on PATH (the Nix shell supplies rustup).
+Create an executable `train.sh` that runs `"$1"` with representative inputs:
 
 ```sh
-(
-pgo_host=$(rustc -vV | sed -n 's/^host: //p')
-pgo_profdata="$(rustc --print sysroot)/lib/rustlib/$pgo_host/bin/llvm-profdata"
-# RUSTFLAGS overrides .cargo/config.toml: keep its native CPU flag explicitly.
-pgo_flags='-Ctarget-cpu=native'
-unset CARGO_ENCODED_RUSTFLAGS
-RUSTFLAGS="$pgo_flags" cargo build --locked --release --target "$pgo_host" --target-dir target/pgo-baseline
-rm -rf target/pgo-data
-mkdir -p target/pgo-data/raw
-RUSTFLAGS="$pgo_flags -Cprofile-generate=$PWD/target/pgo-data/raw" \
-    cargo build --locked --release --target "$pgo_host" --target-dir target/pgo-generate
-./target/pgo-generate/"$pgo_host"/release/template
-# Repeat the preceding command with representative application workloads.
-"$pgo_profdata" merge target/pgo-data/raw -o target/pgo-data/merged.profdata
-# Cargo does not track profile contents: clear only the previous PGO-use build.
-rm -rf target/pgo-use
-RUSTFLAGS="$pgo_flags -Cprofile-use=$PWD/target/pgo-data/merged.profdata -Cllvm-args=-pgo-warn-missing-function" \
-    cargo build --locked --release --target "$pgo_host" --target-dir target/pgo-use
-./target/pgo-use/"$pgo_host"/release/template
-hyperfine --warmup 3 "./target/pgo-baseline/$pgo_host/release/template" \
-    "./target/pgo-use/$pgo_host/release/template"
-)
+./tools/perf-build baseline
+./tools/perf-build pgo -- ./train.sh
+# Smoke test only: ./tools/perf-build pgo -- env
 ```
 
-`hyperfine` is optional. The explicit host target keeps PGO flags away from build
-scripts and proc macros. All builds retain the release profile's fat LTO, strip,
-codegen-unit and panic settings. If you customize Rust flags, put the same flags in
-`pgo_flags` for all three builds. These `RUSTFLAGS` commands require a project path
-without spaces. The subshell keeps these flags and environment changes local to
-the recipe; normal builds retain their settings.
+The helper builds instrumentation, runs training, merges with the matching LLVM
+tool, then rebuilds with the profile. Training must exit normally to flush counts.
+Both variants retain release **fat LTO**, one codegen unit, strip and panic settings.
+Set `PERF_BINARY` when renaming the `template` executable. Native CPU flags
+match `.cargo/config.toml` by default; `RUSTFLAGS` / `CARGO_ENCODED_RUSTFLAGS`
+are honored for both variants. Keep those defaults aligned if you edit the config.
 
-The greeting only smoke-tests the pipeline. Train your real executable on typical
-inputs, hot paths and concurrency; let it exit normally (an abort/crash does not
-flush profiles). Test the final binary and compare baseline versus optimized
-release performance with repeated runs of a separate representative workload.
-Keep source, toolchain, target and dependencies fixed; clear and regenerate the
-profiles after changes. Use the matching rustup `llvm-profdata`, without `-sparse`,
-and never substitute cargo-llvm-cov profiles. Missing-function warnings need review.
+Outputs: `target/pgo-baseline/<host>/release/template` and
+`target/pgo-use/<host>/release/template`. Fresh profiles and input records live
+under `target/pgo-data/`; fresh paths prevent stale Cargo profile-use builds.
+Normal builds remain independent. Run profiling builds serially and retrain after
+source/toolchain/workload changes; coverage profiles cannot be substituted.
 
-Stable rustc's documented workflow is instrumentation-based. This template offers
-no sampling/AutoFDO or Propeller/relinking workflow: an LLVM backend alone does not
-provide stable rustc options, linker integration or a validated profile converter
-for those modes.
+Check the optimized executable's correctness and compare both binaries on separate
+representative evaluation inputs with repeated runs (e.g. `hyperfine --warmup 3`).
+Review missing-function warnings and compare latency, memory and size too; no gain
+is guaranteed. The greeting only checks the pipeline.
+
+Stable rustc exposes instrumentation PGO here. AutoFDO and Propeller are not
+provided as stable template modes; sharing an LLVM backend is insufficient.
